@@ -1,22 +1,63 @@
 # redshift-migrate-db
 ![Migrate-DB](images/migrate-db.png)
 
-Migrate a single database within a Redshift cluster to another cluster via Datasharing.
+Redshift Database Migration Using Data Sharing
+Purpose
+This utility enables the migration of a single database from one Amazon Redshift cluster to another using Redshift Data Sharing, allowing seamless, secure access without the need to move or copy data manually.
 
-## Purpose
-Migrate a single database from one cluster to another using datasharing. 
+Scope
+User & Group Replication
 
-## Scope
-- Users, groups, and the membership of the users to groups not already present in the target cluster will be created in the target. Roles are not in scope at this time.
-- Schemas, tables, primary keys, foreign keys, procedures, and functions will be created in the target cluster if not already present. Other object types like models and datashares are not in scope at this time. Tables with multiple identity columns are not supported. Tables with identity columns are converted to "default with identity" and a calculated seed value to prevent duplicates. All schemas are copied except those configured to be excluded. See below for more details.
-- Ownership to schemas, tables, functions, and procedures are applied to the target based on the source cluster. Grants to users for schemas, tables, functions, and procedures are applied on the target based on the source cluster. Grants to groups for schemas, tables, functions, and procedures are applied on the target based on the source cluster. Lastly, default permissions for schemas to users and groups, users to users, and users to group are applied. Permissions for other objects are not in scope.
-- Datasharing is configured automatically by this utility. This includes the creation of external schemas and adding tables to the datashare created. Cross-region and cross-acount datasharing is not in scope at this time.
-- Data is loaded from the source to the target using datasharing in parallel threads. Tables with interleaved sort keys are excluded because these are not supported by datasharing. Materialized views are created in the target cluster based on the source cluster.
-- Views are created last to resolve dependecies on materialized views.
+Users, groups, and their memberships not already present in the target cluster will be created automatically.
 
-## Prerequisites
-1. An EC2 instance running Amazon Linux or CentOS with access to both the Source and Target clusters on port 5439.
-2. Access to the EC2 instance via SSH.
+Note: Redshift roles are not supported in this version.
+
+Object Migration
+
+The following database objects are replicated if not already present in the target:
+
+Schemas, Tables, Primary Keys, Foreign Keys, Stored Procedures, User-Defined Functions (UDFs)
+
+Objects not in scope include: models, datashares, and other non-listed object types.
+
+Tables with multiple identity columns are not supported. For tables with single identity columns, the utility will convert them to "DEFAULT identity" with calculated seed values to avoid duplicates.
+
+All schemas are migrated except those explicitly excluded via configuration.
+
+Permissions & Ownership
+
+Object ownership (schemas, tables, procedures, functions) is replicated from source to target.
+
+Grants to users and groups are replicated for supported objects.
+
+Default permissions (e.g., schema-level or user-to-user grants) are also applied.
+
+Permissions for unsupported object types are not migrated.
+
+Data Sharing Setup
+
+The utility automatically configures Redshift data sharing:
+
+Creates external schemas in the target.
+
+Adds necessary tables to the datashare.
+
+Cross-region and cross-account sharing are not supported in this release.
+
+Data Loading
+
+Data is transferred in parallel threads for performance.
+
+Tables with interleaved sort keys are skipped (unsupported by Redshift Data Sharing).
+
+Materialized views are recreated in the target cluster based on the source.
+
+Standard views are created after materialized views to resolve dependency chains.
+
+Prerequisites
+An EC2 instance (Amazon Linux or CentOS) with network access to both the source and target Redshift clusters on port 5439.
+
+SSH access to the EC2 instance to execute the migration utility.
 
 ## Linux Setup
 1. Ensure you have the PostgreSQL client installed.
@@ -108,26 +149,35 @@ Does target table exist?
 
 Note that tables with interleaved sort keys are excluded and all schemas will be migrated except those configured to be excluded. See `config.sh` for more details.
 
-**03_migrate_permissions.sh** migrates permissions from the source to the target. These include 
-- schema, table, function, and procedure ownership
-- grants on schemas, tables, functions, and procedures to users
-- grants on schemas, tables, functions, and procedures to groups
-- default permissions to schemas to users, schemas to groups, users to users, and users to groups
-Role permissions are not included in this utility.
+Key Scripts
+03_migrate_permissions.sh
+Migrates object-level and default permissions from the source cluster to the target, including:
 
-**04_setup_datasharing.sh** creates the datashare in the source, add schemas to the datashare, grants permission to the datashare in the target cluster, and creates the external schemas. Testing for multi-region and multi-account has not been performed yet.
+Ownership of schemas, tables, functions, and stored procedures
 
-**05_migrate_data.sh** migrates data from the source to the target. It also migrates materialized views. There is retry logic here to handle dependencies.
+Grants on schemas, tables, functions, and procedures to individual users and groups
 
-**06_migrate_views.sh** migrates views from the source to the target. There is retry logic here to handle dependencies. After views are created, the ownership and grants are performed on the views.
+Default permissions:
 
-**config.sh.example** This should be copied to `config.sh` to run the scripts. It has the important variables you need to update for the migration.
+Schemas → Users
 
-**common.sh** A script that has commonly used functions by the scripts.
+Schemas → Groups
 
-**get_table_ddl.sh** Used by migrate DDL script to get the table DDL.
+Users → Users
 
-**migrate.sh** A script that simplifies executing all of the scripts. 
+Users → Groups
+Note: Role permissions are not handled in this version.
+
+04_setup_datasharing.sh
+Automates the setup of Redshift Data Sharing:
+
+Creates a datashare in the source cluster
+
+Adds relevant schemas to the datashare
+
+Grants access to the datashare in the target cluster
+
+Creates external schemas in the target
 
 ## Security
 
